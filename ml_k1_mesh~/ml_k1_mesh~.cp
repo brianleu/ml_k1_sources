@@ -98,16 +98,16 @@ void birch1mesh_do_resize(t_birch1mesh *x);
 void birch1mesh_clear(t_birch1mesh *x);
 void birch1mesh_matrix_out(t_birch1mesh *x);
 void birch1mesh_assist(t_birch1mesh *x, void *b, long m, long a, char *s);
-void birch1mesh_dsp(t_birch1mesh *x, t_signal **sp, short *count);
-t_int *birch1mesh_perform(t_int *w);
+void birch1mesh_dsp64(t_birch1mesh *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags);
+void birch1mesh_perform64(t_birch1mesh *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
 
-int main(void)
+void ext_main(void *r)
 {
 	long attrflags;
 	void *classex, *attr;
 
 	setup((t_messlist **)&birch1mesh_class, (method)birch1mesh_new, (method)birch1mesh_free, (short)sizeof(t_birch1mesh), 0L, A_GIMME, 0);
-	addmess((method)birch1mesh_dsp, (char *)"dsp", A_CANT, 0);
+	addmess((method)birch1mesh_dsp64, (char *)"dsp64", A_CANT, 0);
 
 	dsp_initclass();
 	
@@ -158,7 +158,6 @@ int main(void)
 	max_addmethod_usurp_low((method)birch1mesh_mask, (char *)"mask");
 	addbang((method)birch1mesh_matrix_out);
 	
-	return(0);
 }
 
 void *birch1mesh_new(t_symbol *s, short argc, t_atom *argv)
@@ -563,7 +562,7 @@ void birch1mesh_assist(t_birch1mesh *x, void *b, long m, long a, char *s)
 }
 
 
-void birch1mesh_dsp(t_birch1mesh *x, t_signal **sp, short *count)
+void birch1mesh_dsp64(t_birch1mesh *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags)
 {
 	int i;
 	int columns = x->in_dim[0];
@@ -572,69 +571,38 @@ void birch1mesh_dsp(t_birch1mesh *x, t_signal **sp, short *count)
 	long n_signals = (ins + outs);
 	long n_args = n_signals + 2;
 	long size = n_args * sizeof(long);
-	long * vecArray;
 
-	x->fs = sp[0]->s_sr;
+	x->fs = samplerate;
 	x->oneOverFs = 1.0/x->fs;
-	x->mframesPerVector =  sp[0]->s_n / FFT_SIZE;
 	
-//post ((char *)"blocks per vector: %d\n", x->mframesPerVector);	
-	vecArray = (long *)t_getbytes(size);
-	vecArray[0] = (long)x;
-	vecArray[1] = sp[0]->s_n;		
-		
-	for (i = 0; i < n_signals; i++) 
-	{
-		vecArray[2 + i] = (long)(sp[i]->s_vec);
-	}
-
-	dsp_addv(birch1mesh_perform, n_args, (void **)vecArray);
-	t_freebytes(vecArray, size);
+	object_method(dsp64, gensym("dsp_add64"), x, birch1mesh_perform64, 0, NULL);
 	
 	birch1mesh_clear(x);
 }
 
-
-inline void _process_matrix(t_birch1mesh *x);
-
-
 // pressure values are copied from input signals to input matrix. 
 // every time an input matrix is filled, it gets processed to output matrix. 
 // calibrated values are copied from output matrix to output.
-t_int *birch1mesh_perform(t_int *w)
-{
-	t_birch1mesh *x = (t_birch1mesh *)(w[1]);
-	int vecsize = w[2];
-
-	float *p_ins[MAX_CHANS];
-//	float *p_DampMatrix[MAX_CHANS];
-//	float *p_outmatrix[MAX_CHANS];
-	float *p_outs[2];
-	
+void birch1mesh_perform64(t_birch1mesh *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam)
+{	
 	int i, j, k, n, frame_start;
-	int framesPerVector = x->mframesPerVector;
 	int inCols = x->in_dim[0];
 	int inRows = x->in_dim[1];
 	int inSignals = inCols * inRows;
 	int meshCols = x->mesh_dim[0];
 	int meshRows = x->mesh_dim[1];
-	int ins = inCols + 3;	// column signals + direct excitation signal, x, y
-	int outs = 2;
-	long dspSignals = (ins + outs);
-	long dspArgs = dspSignals + 2;
+	int algins = inCols + 3;	// column signals + direct excitation signal, x, y
+	int algouts = 2;
 //	float thresh = x->v_thresh;
 	float v;
+
+	x->mframesPerVector = sampleframes / FFT_SIZE;
+
+	int framesPerVector = x->mframesPerVector;
 	
 	if (x->lock || x->xObj.z_disabled)
-		goto bail;
+		assert(false);
 		
-	// set up signal vector pointers. input and output pointers may be identical!
-	for (i = 0; i < ins; i++)
-	{
-		p_ins[i] = (t_float *)(w[3 + i]);
-	}
-	p_outs[0] = (t_float *)(w[3 + ins]);
-	p_outs[1] = (t_float *)(w[3 + ins + 1]);
 	
 	// loop for each FFT_SIZE block.  
 	// assumes that fft frames start on signal vector.
@@ -648,7 +616,7 @@ t_int *birch1mesh_perform(t_int *w)
 			for(j = 0; j < inRows; j++)
 			{
 				n = i*inRows + j;
-				x->mInSigsLo[n][k] = (p_ins[i])[frame_start + j];
+				x->mInSigsLo[n][k] = (ins[i])[frame_start + j];
 			}
 		}
 	}
@@ -662,7 +630,7 @@ t_int *birch1mesh_perform(t_int *w)
 	// 2: upsample inSigsLo to inSigsHi.
 	for (i = 0; i < inSignals; i++)
 	{
-		x->mUpsamplers[i].process(vecsize);
+		x->mUpsamplers[i].process(sampleframes);
 	}
 		
 	// 4: interpolate inSigsHi to exciteMatrices. // rotate 90deg.  
@@ -673,7 +641,7 @@ t_int *birch1mesh_perform(t_int *w)
 		fdy = (float)(inRows) / (float)(meshRows);
 		fdx = (float)(inCols) / (float)(meshCols);
 		
-		for (i = 0; i < vecsize; i++)
+		for (i = 0; i < sampleframes; i++)
 		{
 			for (j = 0; j < meshRows; j++)
 			{
@@ -693,8 +661,8 @@ t_int *birch1mesh_perform(t_int *w)
 	}
 			
 	// 5: run mesh.
-	x->mMesh->setPtrs(x->mExciteMatrixDataArray, p_ins[ins-3], p_ins[ins-2], p_ins[ins-1], x->mMaskDampMatrixData, p_outs[0], p_outs[1], x->mRMSMatrixData);
-	x->mMesh->process(vecsize);
+	x->mMesh->setPtrs(x->mExciteMatrixDataArray, (float*)ins[algins-3], (float*)ins[algins-2], (float*)ins[algins-1], x->mMaskDampMatrixData, (float*)outs[0], (float*)outs[1], x->mRMSMatrixData);
+	x->mMesh->process(sampleframes);
 	
 	
 	// TEST copy one upsampled sig to output	
@@ -703,9 +671,6 @@ t_int *birch1mesh_perform(t_int *w)
 	//	p_outs[1][i] = x->mInSigsHi[((inRows * inCols) >> 1) + ((inCols) >> 1)][i];
 	//}
 
-				
-bail:
-	return (w + dspArgs + 1);
 }
 
 /*

@@ -142,18 +142,18 @@ void matchCentroids(t_birch1centroids *x);
 
 
 void birch1centroids_assist(t_birch1centroids *x, void *b, long m, long a, char *s);
-void birch1centroids_dsp(t_birch1centroids *x, t_signal **sp, short *count);
-t_int *birch1centroids_perform(t_int *w);
+void birch1centroids_dsp64(t_birch1centroids *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags);
+void birch1centroids_perform64(t_birch1centroids *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
 
 inline void blurMatrix(float * pIn, float * pOut, long width, long height );
 
-int main(void)
+void ext_main(void *r)
 {
 	long attrflags;
 	void *classex, *attr;
 
 	setup((t_messlist **)&birch1centroids_class, (method)birch1centroids_new, (method)birch1centroids_free, (short)sizeof(t_birch1centroids), 0L, A_GIMME, 0);
-	addmess((method)birch1centroids_dsp, (char *)"dsp", A_CANT, 0);
+	addmess((method)birch1centroids_dsp64, (char *)"dsp64", A_CANT, 0);
 
 	dsp_initclass();
 	
@@ -186,8 +186,6 @@ int main(void)
 	max_jit_classex_addattr(classex, attr);	
 
 	max_jit_classex_standard_wrap(classex, NULL, 0);
-	
-	return(0);
 }
 
 void *birch1centroids_new(t_symbol *s, short argc, t_atom *argv)
@@ -779,7 +777,7 @@ void matchCentroids(t_birch1centroids *x)
 	
 
 
-void birch1centroids_dsp(t_birch1centroids *x, t_signal **sp, short *count)
+void birch1centroids_dsp64(t_birch1centroids *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags)
 {
 	int i;
 	int columns = x->in_dim[0];
@@ -790,22 +788,10 @@ void birch1centroids_dsp(t_birch1centroids *x, t_signal **sp, short *count)
 	long size = n_args * sizeof(long);
 	long * vecArray;
 
-	x->fs = sp[0]->s_sr;
+	x->fs = samplerate;
 	x->oneOverFs = 1.0/x->fs;
-	x->mframesPerVector =  sp[0]->s_n / FFT_SIZE;
-			
-//post ((char *)"blocks per vector: %d\n", x->mframesPerVector);	
-	vecArray = (long *)t_getbytes(size);
-	vecArray[0] = (long)x;
-	vecArray[1] = sp[0]->s_n;		
-		
-	for (i = 0; i < n_signals; i++) 
-	{
-		vecArray[2 + i] = (long)(sp[i]->s_vec);
-	}
 
-	dsp_addv(birch1centroids_perform, n_args, (void **)vecArray);
-	t_freebytes(vecArray, size);
+	object_method(dsp64, gensym("dsp_add64"), x, birch1centroids_perform64, 0, NULL);
 	
 //	birch1centroids_clear(x);
 }
@@ -815,40 +801,23 @@ void birch1centroids_dsp(t_birch1centroids *x, t_signal **sp, short *count)
 // pressure values are copied from input signals to input matrix. 
 // every time an input matrix is filled, it gets processed to output matrix. 
 // calibrated values are copied from output matrix to output.
-t_int *birch1centroids_perform(t_int *w)
+void birch1centroids_perform64(t_birch1centroids *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam)
 {
-	t_birch1centroids *x = (t_birch1centroids *)(w[1]);
-	int vecsize = w[2];
-
-	float *p_ins[MAX_CHANS];
-	float *p_outs[MAX_CENTROIDS * 3];
 	
 	int i, j, k, n, frame_start;
+	x->mframesPerVector = sampleframes / FFT_SIZE;
+
 	int framesPerVector = x->mframesPerVector;
 	int cols = x->in_dim[0];
 	int rows = x->in_dim[1];
 	
-	int ins = cols;	// column signals 
-	int outs = MAX_CENTROIDS * 3;
-	long dspSignals = (ins + outs);
-	long dspArgs = dspSignals + 2;
 	float v;
 	
 	if (x->lock || x->xObj.z_disabled)
-		goto bail;
+		assert(false);
 		
 	// need a fifo in case FFT_SIZE < vecsize. FIXME
 		
-	// set up signal vector pointers. input and output pointers may be identical!
-	for (i = 0; i < ins; i++)
-	{
-		p_ins[i] = (t_float *)(w[3 + i]);
-	}
-	for (i = 0; i < outs; i++)
-	{
-		p_outs[i] = (t_float *)(w[3 + ins + i]);
-	}
-	
 	// loop for each FFT_SIZE block.  
 	// assumes that fft frames start on signal vector.
 
@@ -861,7 +830,7 @@ t_int *birch1centroids_perform(t_int *w)
 			for(j = 0; j < rows; j++)
 			{
 				n = i*rows + j;
-				x->mInSigsLo[n][k] = (p_ins[i])[frame_start + j];
+				x->mInSigsLo[n][k] = (ins[i])[frame_start + j];
 			}
 		}
 	}
@@ -952,17 +921,17 @@ t_int *birch1centroids_perform(t_int *w)
 		
 		x->mUpsamplers[i+2].setOrder(5);	// always interpolation for z
 		
-		x->mUpsamplers[i].process(vecsize);
-		x->mUpsamplers[i+1].process(vecsize);
-		x->mUpsamplers[i+2].process(vecsize);
+		x->mUpsamplers[i].process(sampleframes);
+		x->mUpsamplers[i+1].process(sampleframes);
+		x->mUpsamplers[i+2].process(sampleframes);
 	}
 	
 	// 5: copy centroidSigsHi to outs.
 	for (i = 0; i < MAX_CENTROIDS*3; i++)
 	{
-		for(j=0; j<vecsize; j++)
+		for(j=0; j<sampleframes; j++)
 		{
-			p_outs[i][j] =  x->mCentroidSigsHi[i][j];
+			outs[i][j] =  x->mCentroidSigsHi[i][j];
 		}
 	}		
 	
@@ -971,9 +940,6 @@ t_int *birch1centroids_perform(t_int *w)
 //	{
 //		p_outs[1][i] = x->mInSigsHi[((inRows * inCols) >> 1) + ((inCols) >> 1)][i];
 //	}
-				
-bail:
-	return (w + dspArgs + 1);
 }
 
 void gaussianKernel()

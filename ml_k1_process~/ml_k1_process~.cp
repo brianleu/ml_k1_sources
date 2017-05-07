@@ -139,22 +139,17 @@ void ml_k1proc_calib_write(t_ml_k1proc *x);
 void ml_k1proc_set_calib_cutoff(t_ml_k1proc *x, void *attr, long argc, t_atom *argv);
 
 void ml_k1proc_assist(t_ml_k1proc *x, void *b, long m, long a, char *s);
-void ml_k1proc_dsp(t_ml_k1proc *x, t_signal **sp, short *count);
+void ml_k1proc_dsp64(t_ml_k1proc *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags);
 void ml_k1proc_biquad_coeffs(t_ml_k1proc *x);
-t_int *ml_k1proc_perform(t_int *w);
+void ml_k1proc_perform64(t_ml_k1proc *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam);
 
-// utilities
-t_jit_object * ujit_matrix_2dfloat_new(long width, long height);
-t_float * ujit_matrix_get_data(t_jit_object * m);
-unsigned long ujit_matrix_get_rowbytes(t_jit_object * m);
-
-int main(void)
+void ext_main(void *r)
 {
 	long attrflags;
 	void *classex, *attr;
 
 	setup((t_messlist **)&ml_k1proc_class, (method)ml_k1proc_new, (method)ml_k1proc_free, (short)sizeof(t_ml_k1proc), 0L, A_GIMME, 0);
-	addmess((method)ml_k1proc_dsp, (char *)"dsp", A_CANT, 0);
+	addmess((method)ml_k1proc_dsp64, (char *)"dsp64", A_CANT, 0);
 
 	dsp_initclass();
 	
@@ -203,7 +198,6 @@ int main(void)
 	addmess((method)ml_k1proc_calib_getstddev, (char *)"calib_getstddev", 0);
 	addmess((method)ml_k1proc_calib_getmax, (char *)"calib_getmax", 0);
 	
-	return(0);
 }
 
 void *ml_k1proc_new(t_symbol *s, short argc, t_atom *argv)
@@ -646,31 +640,24 @@ void ml_k1proc_assist(t_ml_k1proc *x, void *b, long m, long a, char *s)
 
 }
 
-
-void ml_k1proc_dsp(t_ml_k1proc *x, t_signal **sp, short *count)
+void ml_k1proc_dsp64(t_ml_k1proc *x, t_object *dsp64, short *count, double samplerate, long maxvectorsize, long flags)
 {
-	int i;
-	int c = x->dim[0];
-	long n_signals = (c + 1 + c + 1);
-	long n_args = n_signals + 2;
-	long size = n_args * sizeof(long);
-	long * vecArray;
+	post("my sample rate is: %f", samplerate);
 
-	x->fs = sp[0]->s_sr;
-	x->oneOverFs = 1.0/x->fs;
-	
-	vecArray = (long *)t_getbytes(size);
-	vecArray[0] = (long)x;
-	vecArray[1] = sp[0]->s_n;		
-		
-	for (i = 0; i < n_signals; i++) 
-	{
-		vecArray[2 + i] = (long)(sp[i]->s_vec);
-	}
+	// instead of calling dsp_add(), we send the "dsp_add64" message to the object representing the dsp chain
+	// the arguments passed are:
+	// 1: the dsp64 object passed-in by the calling function
+	// 2: the symbol of the "dsp_add64" message we are sending
+	// 3: a pointer to your object
+	// 4: a pointer to your 64-bit perform method
+	// 5: flags to alter how the signal chain handles your object -- just pass 0
+	// 6: a generic pointer that you can use to pass any additional data to your perform method
 
-	dsp_addv(ml_k1proc_perform, n_args, (void **)vecArray);
-	t_freebytes(vecArray, size);
-	
+	x->fs = samplerate;
+	x->oneOverFs = 1.0 / x->fs;
+
+	object_method(dsp64, gensym("dsp_add64"), x, ml_k1proc_perform64, 0, NULL);
+
 	// precalculate biquad values that are constant over frequency.
 	
 	ml_k1proc_biquad_coeffs(x);
@@ -711,15 +698,11 @@ inline void _process_matrix(t_ml_k1proc *x);
 // pressure values are copied from input signals to input matrix. 
 // every time an input matrix is filled, it gets processed to output matrix. 
 // calibrated values are copied from output matrix to output.
-t_int *ml_k1proc_perform(t_int *w)
+void ml_k1proc_perform64(t_ml_k1proc *x, t_object *dsp64, double **ins, long numins, double **outs, long numouts, long sampleframes, long flags, void *userparam)
 {
-	t_ml_k1proc *x = (t_ml_k1proc *)(w[1]);
-	float *p_ins[MAX_CHANS];
 	float *p_inmatrix[MAX_CHANS];
 	float *p_outmatrix[MAX_CHANS];
-	float *p_outs[MAX_CHANS];
 	
-	int vecsize = w[2];
 	int i, j, frame_start;
 	int offset = x->fftOffset;
 	int columns = x->dim[0];
@@ -730,14 +713,7 @@ t_int *ml_k1proc_perform(t_int *w)
 	float f;
 	
 	if (x->lock || x->xObj.z_disabled)
-		goto bail;
-		
-	// set up signal vector pointers. input and output pointers may be identical!
-	for (i = 0; i < chans; i++)
-	{
-		p_ins[i] = (t_float *)(w[3 + i]);
-		p_outs[i] = (t_float *)(w[3 + chans + i]);
-	}
+		assert(false);
 	
 	// set up matrix row pointers. data is flipped x<->y in the matrix for speed.
 	// each signal column is a matrix row.
@@ -748,14 +724,14 @@ t_int *ml_k1proc_perform(t_int *w)
 	}
 
 	// assumes that fft frames start on signal vector.
-	for(frame_start = 0; frame_start <= vecsize - FFT_SIZE; frame_start += FFT_SIZE)
+	for(frame_start = 0; frame_start <= sampleframes - FFT_SIZE; frame_start += FFT_SIZE)
 	{
 		// copy input signals to input matrix.
 		for (i = 0; i < columns; i++)
 		{
 			for(j = 0; j < rows; j++)
 			{
-				(p_inmatrix[i])[j] = (p_ins[i])[frame_start + offset + j];
+				(p_inmatrix[i])[j] = (ins[i])[frame_start + offset + j];
 			}
 		}
 		
@@ -767,28 +743,25 @@ t_int *ml_k1proc_perform(t_int *w)
 			for(j = 0; j < rows; j++)
 			{
 				f = (p_outmatrix[i])[j];
-				(p_outs[i])[frame_start + j] = f; //(p_outmatrix[i])[j];
+				(outs[i])[frame_start + j] = f; //(p_outmatrix[i])[j];
 			}
 			for(j = rows; j < FFT_SIZE; j++)
 			{
-				(p_outs[i])[frame_start + j] = 0.; // zero out unused data
+				(outs[i])[frame_start + j] = 0.; // zero out unused data
 			}
 		}		
 
 		// make row index signal
 		for(j = 0; j < rows; j++)
 		{
-			(p_outs[columns])[frame_start + j] = j;
+			(outs[columns])[frame_start + j] = j;
 		}
 		for(j = rows; j < FFT_SIZE; j++)
 		{
-			(p_outs[columns])[frame_start + j] = -1.;
+			(outs[columns])[frame_start + j] = -1.;
 		}
 			
 	}
-	
-bail:
-	return (w + n_args + 1);
 }
 
 
