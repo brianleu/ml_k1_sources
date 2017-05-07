@@ -299,7 +299,7 @@ void ml_k1proc_do_resize(t_ml_k1proc *x)
 		x->mInMatrixData = ujit_matrix_get_data(m);
 		x->mMatrixRowbytes = ujit_matrix_get_rowbytes(m);
 		bytes = x->dim[0] * x->mMatrixRowbytes;
-		setmem(x->mInMatrixData, bytes, 0);
+		memset(x->mInMatrixData, 0, bytes);
 		x->mInMatrix = m;
 	}
 	
@@ -311,7 +311,7 @@ void ml_k1proc_do_resize(t_ml_k1proc *x)
 	{
 		x->mOutMatrixData = ujit_matrix_get_data(m);
 		bytes = x->dim[0] * x->mMatrixRowbytes;
-		setmem(x->mOutMatrixData, bytes, 0);
+		memset(x->mOutMatrixData, 0, bytes);
 		x->mOutMatrix = m;
 	}
 	
@@ -357,12 +357,12 @@ void ml_k1proc_clear(t_ml_k1proc *x)
 	const long bytes = x->dim[0] * x->mMatrixRowbytes;
 	
 	x->lock = 1;	// need critical region
-	setmem(x->mInMatrixData, bytes, 0);
-	setmem(x->mOutMatrixData, bytes, 0);
+	memset(x->mInMatrixData, 0, bytes);
+	memset(x->mOutMatrixData, 0, bytes);
 	
 	for(int i = 0; i < BQ_SIZE; i++)
 	{
-		setmem(x->mBiquadMatrixDataArray[i], bytes, 0);
+		memset(x->mBiquadMatrixDataArray[i], 0, bytes);
 	}
 	
 	x->lock = 0;
@@ -899,7 +899,7 @@ inline void _process_matrix(t_ml_k1proc *x)
 				post ((char *)"gathering signal: (calib_end to stop)\n");
 				// clear maxima
 				const long bytes = x->dim[0] * x->mMatrixRowbytes;
-				setmem(x->mCalParamsDataArray[eParamsMax], bytes, 0);
+				memset(x->mCalParamsDataArray[eParamsMax], 0, bytes);
 			}			
 			else for (i = 0; i < columns; i++)
 			{

@@ -136,10 +136,10 @@ void MeshFDTD::clear()
 {
 	for(int i = 0; i < mMeshes; i++)
 	{
-		setmem(mMeshMatrixDataArray[i], mRows * mMeshMatrixRowbytes, 0);
+		memset(mMeshMatrixDataArray[i], 0, mRows * mMeshMatrixRowbytes);
 	}
 	
-	setmem(mLastExciteData, mRows * mMeshMatrixRowbytes, 0);
+	memset(mLastExciteData, 0, mRows * mMeshMatrixRowbytes);
 }
 
 
@@ -158,7 +158,7 @@ void MeshFDTD::process (int samples)
 	// assert((samples & 1) == 0);
 	
 	// clear sums matrix
-	setmem(mSumData, mRows * mMeshMatrixRowbytes, 0); // dodgy, fix
+	memset(mSumData, 0, mRows * mMeshMatrixRowbytes); // dodgy, fix
 	
 	for (i=0; i<samples; i++)
 	{		

@@ -407,9 +407,9 @@ post((char *)"setting dim: %d, %d, %d \n", inCols, inRows, framesPerVector);
 		x->mMaskMatrixData = ujit_matrix_get_data(m);
 		x->mMaskMatrixRowbytes = ujit_matrix_get_rowbytes(m);
 		bytes = x->mesh_dim[0] * x->mMaskMatrixRowbytes;
-		setmem(x->mMaskMatrixData, bytes, 0);
+		memset(x->mMaskMatrixData, 0, bytes);
 		x->mMaskMatrix = m;
-	setmem(x->mMaskMatrixData, x->mesh_dim[0] * x->mMaskMatrixRowbytes, 0);
+	memset(x->mMaskMatrixData, 0, x->mesh_dim[0] * x->mMaskMatrixRowbytes);
 	}
 	
 	// mask matrix
@@ -421,7 +421,7 @@ post((char *)"setting dim: %d, %d, %d \n", inCols, inRows, framesPerVector);
 		x->mMaskDampMatrixData = ujit_matrix_get_data(m);
 		x->mMaskDampMatrixRowbytes = ujit_matrix_get_rowbytes(m);
 		bytes = x->mesh_dim[0] * x->mMaskDampMatrixRowbytes;
-		setmem(x->mMaskDampMatrixData, bytes, 0);
+		memset(x->mMaskDampMatrixData, 0, bytes);
 		x->mMaskDampMatrix = m;
 	}
 	
@@ -434,7 +434,7 @@ post((char *)"setting dim: %d, %d, %d \n", inCols, inRows, framesPerVector);
 		x->mRMSMatrixData = ujit_matrix_get_data(m);
 		x->mRMSMatrixRowbytes = ujit_matrix_get_rowbytes(m);
 		bytes = x->mesh_dim[0] * x->mRMSMatrixRowbytes;
-		setmem(x->mRMSMatrixData, bytes, 0);
+		memset(x->mRMSMatrixData, 0, bytes);
 		x->mRMSMatrix = m;
 	}
 	
@@ -529,21 +529,21 @@ void birch1mesh_clear(t_birch1mesh *x)
 	
 	for(i = 0; i < in_signals; i++)
 	{
-		setmem(x->mInSigsLo[i] , sizeof(float)*framesPerVector, 0);
-		setmem(x->mInSigsHi[i] , sizeof(float)*MAX_VECSIZE, 0);
+		memset(x->mInSigsLo[i], 0 , sizeof(float)*framesPerVector);
+		memset(x->mInSigsHi[i], 0 , sizeof(float)*MAX_VECSIZE);
 	}
 	for(i = 0; i < MAX_VECSIZE; i++)
 	{
-		setmem(x->mExciteMatrixDataArray[i], x->mesh_dim[0] * x->mExciteMatrixRowbytes, 0);
+		memset(x->mExciteMatrixDataArray[i], 0, x->mesh_dim[0] * x->mExciteMatrixRowbytes);
 	}
 
 	
 	// clear avg matrix
-	setmem(x->mRMSMatrixData, x->mesh_dim[0] * x->mRMSMatrixRowbytes, 0);
+	memset(x->mRMSMatrixData, 0, x->mesh_dim[0] * x->mRMSMatrixRowbytes);
 	
 	x->mMesh->clear();
 	
-//	setmem(x->mOutMatrixData, bytes, 0);
+//	memset(x->mOutMatrixData, 0, bytes);
 
 }
 
