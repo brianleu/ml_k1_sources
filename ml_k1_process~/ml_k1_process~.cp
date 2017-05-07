@@ -475,7 +475,7 @@ void ml_k1proc_calib_read(t_ml_k1proc *x)
 	char file2[512];
 	char inBuf[512];
 	short ret, ret2, pathID;
-	ifstream in;
+	ifstream calibFile;
 	int i = 0, j = 0;
 	float a;
 	float & rA = a;
@@ -485,7 +485,7 @@ void ml_k1proc_calib_read(t_ml_k1proc *x)
 	float *pMin, *pDynMin, *pStdDev, * pMax;
 	pathID = path_getdefault();
 	ret = path_topotentialname(pathID, fileShort, fileLong, FALSE);
-	ret2 = path_nameconform(fileLong, file2, PATH_STYLE_SLASH, PATH_TYPE_ABSOLUTE);
+	ret2 = path_nameconform(fileLong, file2, PATH_STYLE_NATIVE_PLAT, PATH_TYPE_ABSOLUTE);
 	
 	ret = locatefiletype(fileShort, &pathID, 0L, 0L); 
 //post((char *)"locatefiletype returned %d\n", ret);
@@ -495,11 +495,11 @@ void ml_k1proc_calib_read(t_ml_k1proc *x)
 //post((char *)"path_topotentialname returned %d\n", ret);
 //post((char *)"conform to: %s\n", fileLong);
 
-	pathname_slash_to_unix(fileLong, file2);
+	//pathname_slash_to_unix(fileLong, file2);
 	post((char *)"ml_k1_process: reading calibration from: %s\n", file2);
 
-	in.open(file2, ifstream::in);
-	if (!in.good())
+	calibFile.open(file2, ifstream::in);
+	if (!calibFile.good())
 	{
 		error((char *)"ml_k1_process: couldn't open file %s\n", fileShort);
 	}
@@ -507,41 +507,41 @@ void ml_k1proc_calib_read(t_ml_k1proc *x)
 	{
 //		c = in.peek();
 //		post ("got %c ", c);
-		while(!isdigit(in.peek())) in.getline(inBuf, 512);
+		while(!isdigit(calibFile.peek())) calibFile.getline(inBuf, 512);
 		for ( i=0; i < rows; i++)
 		{
 			pMin = (t_float *)(x->mCalParamsDataArray[eParamsMin] + i*rows);
 			pDynMin = (t_float *)(x->mCalParamsDataArray[eParamsDynMin] + i*rows);
 			for ( j=0; j < columns; j++)
 			{
-				in >> rA;
+				calibFile >> rA;
 				pMin[j] = a;
 				pDynMin[j] = a;
 			}	
-			if (!in.good()) break;
+			if (!calibFile.good()) break;
 		}
-		while(!isdigit(in.peek())) in.getline(inBuf, 512);
+		while(!isdigit(calibFile.peek())) calibFile.getline(inBuf, 512);
 		for ( i=0; i < rows; i++)
 		{
 			pStdDev = (t_float *)(x->mCalParamsDataArray[eParamsStdDev] + i*rows);
 			for ( j=0; j < columns; j++)
 			{
-				in >> rA;
+				calibFile >> rA;
 				pStdDev[j] = a;
 			}
-			if (!in.good()) break;
+			if (!calibFile.good()) break;
 		}
 		
-		while(!isdigit(in.peek())) in.getline(inBuf, 512);
+		while(!isdigit(calibFile.peek())) calibFile.getline(inBuf, 512);
 		for ( i=0; i < rows; i++)
 		{
 			pMax = (t_float *)(x->mCalParamsDataArray[eParamsMax] + i*rows);
 			for ( j=0; j < columns; j++)
 			{
-				in >> rA;
+				calibFile >> rA;
 				pMax[j] = a;
 			}
-			if (!in.good()) break;
+			if (!calibFile.good()) break;
 		}
 		
 		if ((i == rows) && (j == columns))
@@ -554,7 +554,7 @@ void ml_k1proc_calib_read(t_ml_k1proc *x)
 			error((char *)"ml_k1_process: bad calibration file %s\n", fileShort);
 		}
 	}
-	in.close();
+	calibFile.close();
 }
 
 
@@ -1021,49 +1021,3 @@ inline void _process_matrix(t_ml_k1proc *x)
 		}
 	}
 }
-
-
-
-
-//--------------------------------------------------------------------------------
-
-
-t_jit_object * ujit_matrix_2dfloat_new(long width, long height)
-{
-	t_jit_matrix_info info;
-	t_jit_object * newMatrix = 0;
-
-	jit_matrix_info_default(&info);
-	info.type = _jit_sym_float32;
-	info.dimcount = 2;
-	info.planecount = 1;
-	info.dim[0] = width;		
-	info.dim[1] = height;
-	
-	newMatrix = (t_jit_object *)jit_object_new(gensym((char *)"jit_matrix"), &info);
-
-	if (!newMatrix)
-	{
-		error((char *)"ml_k1_process: couldn't allocate matrix!"); 
-	}
-	return newMatrix;
-}
-
-
-t_float * ujit_matrix_get_data(t_jit_object * m)
-{
-	t_float * pData;
-	jit_object_method(m, _jit_sym_getdata, &pData);
-	return(pData);
-}
-
-
-unsigned long ujit_matrix_get_rowbytes(t_jit_object * m)
-{
-	t_jit_matrix_info info;
-	jit_object_method(m, _jit_sym_getinfo, &info);
-	return (info.dimstride[1]);
-}
-
-
-
