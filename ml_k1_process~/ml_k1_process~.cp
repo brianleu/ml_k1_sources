@@ -25,6 +25,7 @@
 
 
 #include "jit.common.h"
+#include "ml_jit_utils.h"
 //#include "ext.h"
 #include "z_dsp.h"
 #include <math.h>

@@ -11,7 +11,6 @@
 #include <math.h>
 #include <vector>
 #include "ProcMeshFDTD.h"
-#include "ProcMeshWGM.h"
 #include "ProcUpsampler.h"
 
 #define MAX_CHANS 16

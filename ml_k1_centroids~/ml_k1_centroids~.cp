@@ -30,7 +30,7 @@
 #include <math.h>
 #include <vector>
 #include "ProcUpsampler.h"
-#include "ml_k1_jit_utils.h"
+#include "ml_jit_utils.h"
 
 #define MAX_CHANS 16
 #define MAX_CENTROIDS 4		// fixed number of outputs
