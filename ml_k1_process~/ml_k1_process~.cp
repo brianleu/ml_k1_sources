@@ -568,12 +568,12 @@ void ml_k1proc_calib_write(t_ml_k1proc *x)
 	
 	pathID = path_getdefault();
 	ret = path_topotentialname(pathID, fileShort, fileLong, FALSE);
-	ret2 = path_nameconform(fileLong, file2, PATH_STYLE_SLASH, PATH_TYPE_ABSOLUTE);
+	ret2 = path_nameconform(fileLong, file2, PATH_STYLE_NATIVE_PLAT, PATH_TYPE_ABSOLUTE);
 	
 //post((char *)"path_topotentialname returned %d\n", ret);
 //post((char *)"conform to: %s\n", fileLong);
 
-	pathname_slash_to_unix(fileLong, file2);
+	//pathname_slash_to_unix(fileLong, file2);
 	post((char *)"ml_k1_process: writing calibration to: %s\n", file2);
 
 	f.open(file2);
